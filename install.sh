@@ -5,6 +5,12 @@ set -e
 INSTALL_DIR="/opt/port_limiter"
 BIN_ALIAS="/usr/local/bin/portx"
 
+if [ -f "$BIN_ALIAS" ]; then
+  echo "✅ PortLimiterX is already installed."
+  echo "🚀 Launching CLI..."
+  exec $BIN_ALIAS
+fi
+
 echo "📦 Installing PortLimiterX from GitHub..."
 
 # Dependencies

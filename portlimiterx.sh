@@ -3,38 +3,28 @@
 INSTALL_DIR="/opt/port_limiter"
 mkdir -p $INSTALL_DIR
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-RESET='\033[0m'
-
-TITLE="${CYAN}🔥 PortLimiterX — Smart Traffic Port Controller 🔥${RESET}"
-
-# Ensure nftables setup
-nft list table inet traffic >/dev/null 2>&1 || nft add table inet traffic
-nft list chain inet traffic input >/dev/null 2>&1 || nft add chain inet traffic input { type filter hook input priority 0 \; }
-nft list chain inet traffic output >/dev/null 2>&1 || nft add chain inet traffic output { type filter hook output priority 0 \; }
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+CYAN="\033[1;36m"
+RESET="\033[0m"
 
 show_menu() {
+  echo -e "\n${CYAN}🚦 PortLimiterX - Port Traffic Limiter (nftables)${RESET}"
+  echo "==============================================="
+  echo -e "${YELLOW}1.${RESET} Add new port limit"
+  echo -e "${YELLOW}2.${RESET} Remove specific port limit"
+  echo -e "${YELLOW}3.${RESET} Remove all port limits"
+  echo -e "${YELLOW}4.${RESET} View usage for a port"
+  echo -e "${YELLOW}5.${RESET} Full Uninstall\n  ${YELLOW}6.${RESET} Exit"
   echo ""
-  echo -e "$TITLE"
-  echo -e "${YELLOW}==============================================${RESET}"
-  echo -e "${GREEN}1.${RESET} ➕ Add new port limit"
-  echo -e "${GREEN}2.${RESET} 🛠 Edit existing port limit"
-  echo -e "${GREEN}3.${RESET} ❌ Remove a specific port"
-  echo -e "${GREEN}4.${RESET} 🧹 Remove all limits"
-  echo -e "${GREEN}5.${RESET} 📊 View port usage"
-  echo -e "${GREEN}6.${RESET} 🚪 Exit"
-  echo -e "${YELLOW}==============================================${RESET}"
-  read -p "Select an option: " OPTION
+  read -p "Choose an option: " OPTION
   case $OPTION in
     1) add_limit ;;
-    2) edit_limit ;;
-    3) remove_port ;;
-    4) remove_all ;;
-    5) view_usage ;;
+    2) remove_port ;;
+    3) remove_all ;;
+    4) view_usage ;;
+    5) full_uninstall ;;
     6) exit 0 ;;
     *) echo -e "${RED}❌ Invalid option.${RESET}"; show_menu ;;
   esac
@@ -42,45 +32,24 @@ show_menu() {
 
 add_limit() {
   read -p "Port number: " PORT
-  read -p "Traffic limit (MB): " LIMIT
+  read -p "Traffic limit (in MB): " LIMIT
+  read -p "Check interval in seconds [default: 10]: " INTERVAL
+  INTERVAL=${INTERVAL:-10}
 
-  echo -e "➕ Adding port ${CYAN}$PORT${RESET} with limit ${YELLOW}${LIMIT}MB${RESET}"
+  echo -e "${CYAN}➕ Adding port $PORT with $LIMIT MB limit and interval ${INTERVAL}s${RESET}"
 
   bash $INSTALL_DIR/cli.sh internal_remove $PORT
-
-  nft add rule inet traffic input tcp dport $PORT counter accept 2>/dev/null
-  nft add rule inet traffic output tcp sport $PORT counter accept 2>/dev/null
-
-  python3 $INSTALL_DIR/gen_port_script.py $PORT $LIMIT
+  python3 $INSTALL_DIR/gen_port_script.py $PORT $LIMIT $INTERVAL
   systemctl daemon-reload
   systemctl enable --now port-limit-$PORT.service
-  echo -e "${GREEN}✅ Port $PORT activated with limit.${RESET}"
-  show_menu
-}
-
-edit_limit() {
-  read -p "Port to edit: " PORT
-  if [[ ! -f "$INSTALL_DIR/traffic_$PORT.json" ]]; then
-    echo -e "${RED}❌ No limit found for port $PORT.${RESET}"
-    show_menu
-    return
-  fi
-  read -p "New traffic limit (MB): " LIMIT
-  echo -e "🔁 Updating limit for port ${CYAN}$PORT${RESET} to ${YELLOW}${LIMIT}MB${RESET} ..."
-  bash $INSTALL_DIR/cli.sh internal_remove $PORT
-  nft add rule inet traffic input tcp dport $PORT counter accept 2>/dev/null
-  nft add rule inet traffic output tcp sport $PORT counter accept 2>/dev/null
-  python3 $INSTALL_DIR/gen_port_script.py $PORT $LIMIT
-  systemctl daemon-reload
-  systemctl enable --now port-limit-$PORT.service
-  echo -e "${GREEN}✅ Limit updated successfully.${RESET}"
+  echo -e "${GREEN}✅ Port $PORT is now monitored.${RESET}"
   show_menu
 }
 
 remove_port() {
   read -p "Port to remove: " PORT
   internal_remove $PORT
-  echo -e "${GREEN}✅ Port $PORT limit removed.${RESET}"
+  echo -e "${GREEN}✅ Limit for port $PORT removed.${RESET}"
   show_menu
 }
 
@@ -88,35 +57,29 @@ remove_all() {
   echo -e "${YELLOW}🚫 Removing all limits...${RESET}"
   for SERVICE in /etc/systemd/system/port-limit-*.service; do
     [ -e "$SERVICE" ] || continue
-    PORT=$(basename "$SERVICE" | grep -oP '\d+')
-    echo -e " → Removing port ${CYAN}$PORT${RESET}"
+    PORT=$(basename "$SERVICE" | sed 's/[^0-9]*//g')
+    echo -e " → Removing port $PORT"
     internal_remove $PORT
   done
-  echo -e "${GREEN}✅ All limits removed.${RESET}"
+  echo -e "${GREEN}✅ All port limits removed.${RESET}"
   show_menu
 }
 
 view_usage() {
-  echo -e "\n📊 ${CYAN}Active Ports:${RESET}"
+  echo ""
+  echo -e "${CYAN}📊 Active monitored ports:${RESET}"
   for FILE in $INSTALL_DIR/traffic_*.json; do
     PORT=$(basename "$FILE" | grep -oP '\d+')
-    echo -e " - Port $PORT"
+    echo -e " - Port ${YELLOW}$PORT${RESET}"
   done
-  read -p "Port to view: " PORT
+  read -p "Enter port to view: " PORT
   FILE="$INSTALL_DIR/traffic_$PORT.json"
   if [[ -f "$FILE" ]]; then
-    TOTAL=$(jq -r '.total_mb' "$FILE")
-    SERVICE=$(systemctl is-active port-limit-$PORT.service)
-    SCRIPT=$(grep "LIMIT =" $INSTALL_DIR/monitor_$PORT.py | awk '{print $3}')
-    LIMIT_MB=$((SCRIPT / 1024 / 1024))
-    REMAIN=$(echo "$LIMIT_MB - $TOTAL" | bc)
     echo ""
-    echo -e "${BLUE}┌──────────────────────────────────────────┐${RESET}"
-    printf "${BLUE}│${RESET} 🔢 Current Usage:     ${YELLOW}%10.2f MB${RESET} ${BLUE}│\n" "$TOTAL"
-    printf "${BLUE}│${RESET} 🎯 Max Limit:         ${YELLOW}%10.0f MB${RESET} ${BLUE}│\n" "$LIMIT_MB"
-    printf "${BLUE}│${RESET} ⏳ Remaining:         ${YELLOW}%10.2f MB${RESET} ${BLUE}│\n" "$REMAIN"
-    printf "${BLUE}│${RESET} 🔄 Service Status:    ${GREEN}%12s${RESET} ${BLUE}│\n" "$SERVICE"
-    echo -e "${BLUE}└──────────────────────────────────────────┘${RESET}"
+    echo -e "${CYAN}🔍 Port $PORT usage:${RESET}"
+    TOTAL=$(jq .total_mb "$FILE")
+    echo -e "   → Total used: ${YELLOW}$TOTAL MB${RESET}"
+    echo ""
   else
     echo -e "${RED}❌ No data found for port $PORT.${RESET}"
   fi
@@ -138,6 +101,22 @@ internal_remove() {
 if [[ "$1" == "internal_remove" ]]; then
   internal_remove $2
   exit 0
+
+
+full_uninstall() {
+  echo -e "${RED}⚠️ This will remove PortLimiterX completely.${RESET}"
+  read -p "Are you sure? [y/N]: " CONFIRM
+  if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
+    remove_all
+    rm -rf $INSTALL_DIR
+    rm -f /usr/local/bin/portx
+    echo -e "${GREEN}✅ PortLimiterX fully uninstalled.${RESET}"
+    exit 0
+  else
+    show_menu
+  fi
+}
+
 fi
 
 show_menu

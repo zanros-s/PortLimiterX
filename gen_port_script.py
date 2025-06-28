@@ -1,34 +1,42 @@
 #!/usr/bin/env python3
-import sys, os
+import sys
+import os
 
 if len(sys.argv) < 3:
-    print("Usage: gen_port_script.py <PORT> <LIMIT_MB> [INTERVAL_SECONDS]")
+    print("Usage: python3 gen_port_script.py <port> <limit_mb> [interval]")
     sys.exit(1)
 
-port = sys.argv[1]
-limit_mb = int(sys.argv[2])
-limit_bytes = limit_mb * 1024 * 1024
-interval = int(sys.argv[3]) if len(sys.argv) > 3 else 10
+PORT = int(sys.argv[1])
+LIMIT_MB = int(sys.argv[2])
+INTERVAL = int(sys.argv[3]) if len(sys.argv) > 3 else 10
 
-install_dir = "/opt/port_limiter"
-log_file = f"/var/log/port_limit_{port}.log"
-data_file = f"{install_dir}/traffic_{port}.json"
-script_path = f"{install_dir}/monitor_{port}.py"
-service_path = f"/etc/systemd/system/port-limit-{port}.service"
+INSTALL_DIR = "/opt/port_limiter"
+MONITOR_SCRIPT = f"{INSTALL_DIR}/monitor_{PORT}.py"
+SERVICE_FILE = f"/etc/systemd/system/port-limit-{PORT}.service"
+DATA_FILE = f"{INSTALL_DIR}/traffic_{PORT}.json"
+LOG_FILE = f"/var/log/port_limit_{PORT}.log"
 
-os.makedirs(install_dir, exist_ok=True)
-if not os.path.exists(log_file):
-    open(log_file, "a").close()
-    os.chmod(log_file, 0o666)
+LIMIT_BYTES = LIMIT_MB * 1024 * 1024
 
-monitor_script = f"""#!/usr/bin/env python3
+# ایجاد جدول و زنجیره‌ها اگر نبودند
+os.system("nft list table inet traffic || nft add table inet traffic")
+os.system("nft list chain inet traffic input || nft add chain inet traffic input '{ type filter hook input priority 0; }'")
+os.system("nft list chain inet traffic output || nft add chain inet traffic output '{ type filter hook output priority 0; }'")
+
+# افزودن rule شمارشگر
+os.system(f"nft add rule inet traffic input tcp dport {PORT} counter")
+os.system(f"nft add rule inet traffic output tcp sport {PORT} counter")
+
+# تولید اسکریپت مانیتور
+with open(MONITOR_SCRIPT, "w") as f:
+    f.write(f"""#!/usr/bin/env python3
 import time, json, subprocess, os
 
-PORT = {port}
-LIMIT = {limit_bytes}
-INTERVAL = {interval}
-DATA_FILE = "{data_file}"
-LOG_FILE = "{log_file}"
+PORT = {PORT}
+LIMIT = {LIMIT_BYTES}
+INTERVAL = {INTERVAL}
+DATA_FILE = "{DATA_FILE}"
+LOG_FILE = "{LOG_FILE}"
 
 def get_bytes(direction):
     try:
@@ -39,6 +47,7 @@ def get_bytes(direction):
                 parts = line.split("bytes")
                 if len(parts) > 1:
                     return int(parts[1].split()[0])
+        log(f"No matching counter found in '{{direction}}' for port {{PORT}}")
     except Exception as e:
         log(f"Error reading bytes: {{e}}")
     return 0
@@ -46,9 +55,11 @@ def get_bytes(direction):
 def log(msg):
     try:
         with open(LOG_FILE, 'a') as f:
-            f.write(f"[{{time.strftime('%F %T')}}] {{msg}}\n")
+            f.write(f"[{{time.strftime('%F %T')}}] {{msg}}\\n")
     except Exception as e:
         print(f"Logging failed: {{e}}")
+
+log("🟢 Started monitoring...")
 
 if not os.path.exists(DATA_FILE):
     in_b = get_bytes("input")
@@ -80,22 +91,22 @@ while True:
     except Exception as e:
         log(f"Error: {{e}}")
     time.sleep(INTERVAL)
-"""
+""")
 
-with open(script_path, "w") as f:
-    f.write(monitor_script)
+os.chmod(MONITOR_SCRIPT, 0o755)
 
-service_code = f"""[Unit]
-Description=Traffic Monitor for Port {port}
+# ساخت فایل سرویس systemd
+service_content = f"""[Unit]
+Description=PortLimiterX monitor for port {PORT}
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 {script_path}
+ExecStart=/usr/bin/python3 {MONITOR_SCRIPT}
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 """
 
-with open(service_path, "w") as f:
-    f.write(service_code)
+with open(SERVICE_FILE, "w") as f:
+    f.write(service_content)

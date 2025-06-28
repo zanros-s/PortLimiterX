@@ -1,34 +1,54 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/zanros-s/PortLimiterX/main/logo.png" width="200" alt="PortLimiterX Logo" />
+</p>
+
 # 🔥 PortLimiterX
 
-Smart and flexible port traffic limiter using nftables + systemd on Linux.
+Smart and flexible traffic limiter per TCP port using `nftables` + `systemd`.
 
-## 🚀 Features
+---
 
-- Set bandwidth caps for individual TCP ports
-- Uses `nftables` counters for accurate per-port traffic accounting
-- Automatically blocks port when limit is reached
-- CLI tool with colors, stats, and interactive menu
-- Interval configuration for each port monitor
+## ✅ Features
 
-## 🛠 Installation
+- Set bandwidth limits per TCP port
+- Uses `nftables` counters (no packet capture)
+- Auto-blocks ports when limit reached
+- Fully automated with CLI + systemd + log support
+- Custom interval (e.g. check every 10s or 60s)
+- Live usage stats in MB with logs
+
+---
+
+## ⚡️ Quick Install (1-line)
+
+Run this command to install directly from GitHub:
 
 ```bash
-chmod +x install_portx.sh
-sudo ./install_portx.sh
+bash <(curl -sSL https://raw.githubusercontent.com/zanros-s/PortLimiterX/main/install.sh)
 ```
 
-Then launch using:
+Then run the tool using:
 
 ```bash
 portx
 ```
 
-## 📂 File Structure
+---
 
-- `portlimiterx.sh` – Main CLI script
-- `gen_port_script.py` – Generator for Python monitoring + systemd
-- `install_portx.sh` – Auto installer
+## 📂 File Overview
+
+| File              | Purpose                         |
+|-------------------|----------------------------------|
+| `install.sh`      | One-line installer from GitHub  |
+| `portlimiterx.sh` | Main CLI interface              |
+| `gen_port_script.py` | Generator per-port monitor & systemd |
+| `logo.txt`        | ASCII banner                    |
+| `README.md`       | This documentation              |
 
 ---
 
-Made with ❤️ to keep your ports under control.
+## 📝 License
+
+MIT — Feel free to use, modify, and share.
+
+Made with ❤️ by [zanros-s](https://github.com/zanros-s)

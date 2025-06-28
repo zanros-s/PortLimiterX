@@ -28,11 +28,19 @@ mkdir -p $INSTALL_DIR
 # Download components from GitHub raw
 RAW_BASE="https://raw.githubusercontent.com/zanros-s/PortLimiterX/main"
 
-echo "⬇️ Downloading CLI..."
-curl --progress-bar -L "$RAW_BASE/portlimiterx.sh" -o $INSTALL_DIR/cli.sh || { echo "❌ Failed to download CLI" | tee -a $LOG_FILE; exit 1; }
+download_file() {
+  local URL=$1
+  local OUT=$2
+  echo "⬇️ Downloading $(basename "$OUT")..."
+  curl -# -L "$URL" -o "$OUT"
+  if [[ ! -s "$OUT" ]]; then
+    echo "❌ Failed to download $(basename "$OUT"). File is missing or empty." | tee -a $LOG_FILE
+    exit 1
+  fi
+}
 
-echo "⬇️ Downloading generator script..."
-curl --progress-bar -L "$RAW_BASE/gen_port_script.py" -o $INSTALL_DIR/gen_port_script.py || { echo "❌ Failed to download generator" | tee -a $LOG_FILE; exit 1; }
+download_file "$RAW_BASE/portlimiterx.sh" "$INSTALL_DIR/cli.sh"
+download_file "$RAW_BASE/gen_port_script.py" "$INSTALL_DIR/gen_port_script.py"
 
 chmod +x $INSTALL_DIR/cli.sh
 
